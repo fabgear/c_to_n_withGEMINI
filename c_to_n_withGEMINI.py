@@ -1,10 +1,19 @@
 import streamlit as st
 import re
 import math
-# ▼▼▼【ver5.0 変更点】Gemini API関連のインポートを追加 ▼▼▼
-from google import genai
-from google.genai.errors import APIError
-
+# ▼▼▼【ver5.0 変更点】Gemini API関連のインポートを追加 (エラー回避ロジック付き) ▼▼▼
+try:
+    from google import genai
+    from google.genai.errors import APIError
+    # MockClientは不要
+except ImportError:
+    class APIError(Exception): pass
+    class MockClient:
+        def __init__(self, *args, **kwargs): pass
+        def models(self): return self
+        def generate_content(self, *args, **kwargs): return lambda: type('Response', (object,), {'text': 'ライブラリ google-genai が未インストールです。'})()
+    genai = MockClient()
+    
 # ===============================================================
 # ▼▼▼ AIチェックの本体（Gemini API呼び出し部分）- ver5.0 ▼▼▼
 # ===============================================================
@@ -14,13 +23,8 @@ def check_narration_with_gemini(narration_blocks, api_key):
         return "エラー：Gemini APIキーが設定されていません。Streamlit Secretsを確認してください。"
 
     try:
-        # クライアントの初期化
         client = genai.Client(api_key=api_key)
-        
-        # タイムコードと本文を整形
         formatted_text = "\n".join([f"[{b['time']}] {b['text']}" for b in narration_blocks])
-
-        # プロンプト設計（ロールと要望を明確にする）
         prompt = f"""
         あなたはプロフェッショナルな校正者です。
         以下のナレーション原稿のリストを、誤字脱字、不適切な表現、文法ミスがないか厳密にチェックしてください。
@@ -41,9 +45,8 @@ def check_narration_with_gemini(narration_blocks, api_key):
         ---
         """
 
-        # API呼び出し
         response = client.models.generate_content(
-            model='gemini-2.5-flash', # 高速でコスト効率が良いモデル
+            model='gemini-2.5-flash',
             contents=prompt,
         )
 
@@ -54,12 +57,11 @@ def check_narration_with_gemini(narration_blocks, api_key):
     except Exception as e:
         return f"予期せぬエラー: {e}"
 
-
 # ===============================================================
-# ▼▼▼ ツールの本体（エンジン部分）- （ver5.0：Geminiロジック統合）▼▼▼
+# ▼▼▼ ツールの本体（エンジン部分）- （ver5.0：AIデータ取得統合）▼▼▼
 # ===============================================================
 def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=False):
-    # （中略：ver4.4と同一のロジックを維持。ブロック解析まで行う）
+    # （中略：時間ロジック、Hマーカーロジックは変更なし）
     FRAME_RATE = 30.0
     CONNECTION_THRESHOLD = 1.0 + (10.0 / FRAME_RATE)
 
@@ -72,7 +74,6 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
     zenkaku_chars = 'ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ０１２３４５６７８９　' + zenkaku_symbols
     
     to_zenkaku_all = str.maketrans(hankaku_chars, zenkaku_chars)
-
     
     to_hankaku_time = str.maketrans('０１２３４５６７８９：〜', '0123456789:~')
 
@@ -110,9 +111,8 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
         
     output_lines = []
     
-    # ▼▼▼【ver5.0 変更点】AIチェックのためにブロック情報を維持するリスト ▼▼▼
-    narration_blocks_for_ai = [] 
-    
+    narration_blocks_for_ai = [] # AI用ブロックリストを定義
+
     parsed_blocks = []
     for block in blocks:
         line_with_frames = re.sub(r'(\d{2}:\d{2}:\d{2})(?![:.]\d{2})', r'\1.00', block['time'])
@@ -135,12 +135,8 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
             'text': block['text']
         })
 
-    # ... (中略: タイムコード変換ロジック) ...
-    # ... (中略: Hマーカーロジック) ...
-    # ... (中略: 本文・話者ロジック) ...
+    previous_end_hh = -1
 
-    # ver4.4のロジックが続く（割愛）
-    # ...
     for i, block in enumerate(parsed_blocks):
         start_hh, start_mm, start_ss, start_fr = block['start_hh'], block['start_mm'], block['start_ss'], block['start_fr']
         end_hh, end_mm, end_ss, end_fr = block['end_hh'], block['end_mm'], block['end_ss'], block['end_fr']
@@ -256,76 +252,99 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
         if add_blank_line and i < len(parsed_blocks) - 1:
             output_lines.append("")
             
-    # ▼▼▼【ver5.0 変更点】変換結果とAIチェック用データを辞書で返す ▼▼▼
-    return {"narration_script": "\n".join(output_lines), "ai_data": narration_blocks_for_ai}
-# ▲▲▲【ver5.0 変更点】ロジック変更終わり ▼▼▼
+    return {"narration_script": "\n".join(output_lines), "ai_data": narration_blocks_for_ai} # 戻り値を変更
 
 
 # ===============================================================
-# ▼▼▼ Streamlitの画面を作る部分 - （ver5.0：Geminiロジック統合）▼▼▼
+# ▼▼▼ Streamlitの画面を作る部分 - （ver5.4：UI安定化と機能統合）▼▼▼
 # ===============================================================
 st.set_page_config(page_title="Caption to Narration", page_icon="📝", layout="wide")
 st.title('Caption to Narration')
 
-# ▼▼▼【ver5.0 変更点】APIキーをSecretsから取得 ▼▼▼
+# Streamlit Cloud で Secrets から API キーを取得
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
 st.markdown("""<style> 
-textarea::placeholder { font-size: 13px; } 
-textarea { font-size: 14px !important; }
+textarea::placeholder { 
+    font-size: 13px;
+} 
+textarea {
+    font-size: 14px !important;
+}
 </style>""", unsafe_allow_html=True)
 
-col1, col2 = st.columns(2)
-
+# ----------------------------------------------------------------------------------
+# 0. help_textの定義
+# ----------------------------------------------------------------------------------
 help_text = """
 【機能詳細】  
 ・ENDタイム(秒のみ)が自動で入ります  
-...
-""" # help_textは長すぎるため割愛
+　分をまたぐ時は(分秒)、次のナレーションと繋がる時は割愛されます  
+・頭の「N」は自動で全角に変換され未記載の時は自動挿入されます  
+　VOや実況などN以外はそのまま適応されます  
+・Hをまたぐときは自動で仕切りが入ります  
+・ナレーション本文の半角英数字は全て全角に変換します  
+"""
 
 # ----------------------------------------------------------------------------------
 # 1段目：メインのテキストエリアとタイトル
 # ----------------------------------------------------------------------------------
 col1_top, col2_top = st.columns(2)
 
+# タイトルはテキストエリアと同一カラムの最上部に配置 (ver2構造)
 with col1_top:
     st.header('ナレーション原稿形式に変換します')
 with col2_top:
     st.header('コピーしてお使いください')
 
 
+# テキストエリアの定義と結果の表示を同じブロックで行う
 col1_main, col2_main = st.columns(2)
+
+# st.text_areaの戻り値をここで定義
 input_text = ""
 
 with col1_main:
+    # input_textの定義
     input_text = st.text_area(
-        "　", 
+        "ここに元原稿をペースト", 
         height=500, 
         placeholder="""①キャプションをテキストで書き出した形式
-...
-""", # placeholderも割愛
+00;00;00;00 - 00;00;02;29
+N ああああ
+
+②xmlをサイトで変換した形式
+００:００:１５　〜　００:００：１８
+N ああああ
+
+この２つの形式に対応しています。ペーストして　Ctrl+Enter　を押して下さい
+①の方が細かい変換をするのでオススメです
+
+""",
         help=help_text
     )
 
 # ----------------------------------------------------------------------------------
 # 2段目：コントロールエリア（3カラム構造）
 # ----------------------------------------------------------------------------------
+# 3つのカラムを定義：[N強制挿入] [MM:SSで出力] [空]
 col1_bottom_opt, col2_bottom_opt, col3_bottom_opt = st.columns([3, 4, 6]) 
 
+# ▼▼▼【ver5.4 修正点】チェックボックスの横並びを3カラムで実現（構造をver5.2の形に戻す） ▼▼▼
 with col1_bottom_opt:
     n_force_insert = st.checkbox("N強制挿入", value=True)
 
 with col2_bottom_opt:
     mm_ss_colon = st.checkbox("ｍｍ：ｓｓで出力", value=False)
-
-# ▼▼▼【ver5.0 変更点】AIチェックボックスを追加 ▼▼▼
+    
+# col3_bottom_opt に AI チェックボックスを配置
 with col3_bottom_opt:
     ai_check_flag = st.checkbox("誤字脱字をAIでチェック", value=False)
-# ▲▲▲【ver5.0 変更点】ここまで ▼▼▼
+# ▲▲▲【ver5.4 修正点】ここまで ▼▼▼
 
 
 # ----------------------------------------------------------------------------------
-# 3. 変換結果の表示（メインロジック）とAIチェック結果の表示
+# 3. 変換結果の表示（メインロジック）
 # ----------------------------------------------------------------------------------
 if input_text:
     try:
@@ -343,14 +362,16 @@ if input_text:
             st.markdown("---") # 区切り線
             st.subheader("📝 AI校正チェック結果")
             
-            with st.spinner("Geminiが誤字脱字をチェック中..."):
-                ai_result_text = check_narration_with_gemini(ai_data, GEMINI_API_KEY)
-                st.markdown(ai_result_text) # Markdownとして表示（テーブルが見やすくなる）
+            # APIキーがない場合の警告
+            if not GEMINI_API_KEY:
+                 st.error("エラー: AI校正機能を利用するには、Streamlit Secretsに 'GEMINI_API_KEY' を設定してください。")
+            elif isinstance(genai, MockClient):
+                 st.error("エラー: AI校正機能のライブラリが見つかりません。requirements.txtに 'google-genai' を追加してください。")
+            else:
+                 with st.spinner("Geminiが誤字脱字をチェック中..."):
+                     ai_result_text = check_narration_with_gemini(ai_data, GEMINI_API_KEY)
+                     st.markdown(ai_result_text) # Markdownとして表示（テーブルが見やすくなる）
         
-        # UI調整
-        with col2_main:
-            st.markdown('<div style="height: 38px;"></div>', unsafe_allow_html=True) # チェックボックス2つ分の高さを確保 (簡略化)
-            
     except Exception as e:
         # エラー時
         with col2_main:
