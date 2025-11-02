@@ -255,6 +255,187 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
     return {"narration_script": "\n".join(output_lines), "ai_data": narration_blocks_for_ai} # 戻り値を変更
 
 
+
+
+
+
+# ===============================================================
+# ▼▼▼ Streamlitの画面を作る部分 - （ver4.4：UIと機能統合）▼▼▼
+# ===============================================================
+st.set_page_config(page_title="Caption to Narration", page_icon="📝", layout="wide")
+st.title('Caption to Narration')
+
+
+# Streamlit Cloud で Secrets から API キーを取得
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+
+st.markdown("""<style> 
+textarea::placeholder { 
+    font-size: 13px;
+} 
+textarea {
+    font-size: 14px !important;
+}
+</style>""", unsafe_allow_html=True)
+
+col1, col2 = st.columns(2)
+
+help_text = """
+【機能詳細】  
+・ENDタイム(秒のみ)が自動で入ります  
+　分をまたぐ時は(分秒)、次のナレーションと繋がる時は割愛されます  
+・Hをまたぐときは自動で仕切りが入ります  
+   
+・☑N強制挿入がONの場合、自動で全角Ｎが挿入されます  
+　※ＶＯや実況などはそのまま表記  
+・ナレーション本文の半角英数字は全て全角に変換します  
+・☑ｍｍ：ｓｓで出力がONの場合タイムに：が入ります    
+"""
+
+with col1:
+    st.header('')
+    
+    input_text = st.text_area(
+        "ここに元原稿をペースト", 
+        height=500, 
+        placeholder="""①キャプションをテキストで書き出した形式
+00;00;00;00 - 00;00;02;29
+N ああああ
+
+②xmlをサイトで変換した形式
+００:００:１５　〜　００:００：１８
+N ああああ
+
+この２つの形式に対応しています。ペーストして　Ctrl+Enter　を押して下さい
+①の方が細かい変換をするのでオススメです
+
+""",
+        help=help_text
+    )
+
+# ----------------------------------------------------------------------------------
+# 2段目：コントロールエリア（3カラム構造）
+# ----------------------------------------------------------------------------------
+# 3つのカラムを定義：[N強制挿入] [MM:SSで出力] [空]
+col_opt_space1, col1_bottom_opt, col2_bottom_opt, col3_bottom_opt = st.columns([0.1, 3, 4, 6]) 
+
+# ▼▼▼【ver5.4 修正点】チェックボックスの横並びを3カラムで実現（構造をver5.2の形に戻す） ▼▼▼
+with col1_bottom_opt:
+    n_force_insert = st.checkbox("N強制挿入", value=True)
+
+with col2_bottom_opt:
+    mm_ss_colon = st.checkbox("ｍｍ：ｓｓで出力", value=False)
+    
+# col3_bottom_opt に AI チェックボックスを配置
+with col3_bottom_opt:
+    ai_check_flag = st.checkbox("誤字脱字をAIでチェック", value=False)
+# ▲▲▲【ver5.4 修正点】ここまで ▼▼▼
+
+
+with col2:
+    st.header('')
+    
+    if input_text:
+        try:
+            # ▼▼▼【ver4.4 修正点】変換関数にフラグを渡す ▼▼▼
+            converted_text = convert_narration_script(input_text, n_force_insert, mm_ss_colon)
+            
+            st.text_area("　変換完了！コピーしてお使いください", value=converted_text, height=500)
+            
+            # 左カラムのチェックボックス（2つ分）の高さに合わせる
+            st.markdown('<div style="height: 76px;"></div>', unsafe_allow_html=True) 
+
+        except Exception as e:
+            st.error(f"エラーが発生しました。テキストの形式を確認してください。\n\n詳細: {e}")
+            st.markdown('<div style="height: 538px;"></div>', unsafe_allow_html=True) 
+    else:
+        # 入力がない場合、右側を完全に空にするが、高さは維持
+        st.markdown('<div style="height: 538px;"></div>', unsafe_allow_html=True) 
+
+
+# ----------------------------------------------------------------------------------
+# 3. 変換結果の表示（メインロジック）
+# ----------------------------------------------------------------------------------
+if input_text:
+    try:
+        # 変換関数を実行し、結果（スクリプトとAI用データ）を取得
+        conversion_result = convert_narration_script(input_text, n_force_insert, mm_ss_colon)
+        converted_text = conversion_result["narration_script"]
+        ai_data = conversion_result["ai_data"]
+        
+        # output_text_area を col2_main の中で呼び出す
+        with col2_main:
+             st.text_area("　コピーしてお使いください", value=converted_text, height=500)
+             
+        # AIチェックロジック
+        if ai_check_flag:
+            st.markdown("---") # 区切り線
+            st.subheader("📝 AI校正チェック結果")
+            
+            # APIキーがない場合の警告
+            if not GEMINI_API_KEY:
+                 st.error("エラー: AI校正機能を利用するには、Streamlit Secretsに 'GEMINI_API_KEY' を設定してください。")
+            elif isinstance(genai, MockClient):
+                 st.error("エラー: AI校正機能のライブラリが見つかりません。requirements.txtに 'google-genai' を追加してください。")
+            else:
+                 with st.spinner("Geminiが誤字脱字をチェック中..."):
+                     ai_result_text = check_narration_with_gemini(ai_data, GEMINI_API_KEY)
+                     st.markdown(ai_result_text) # Markdownとして表示（テーブルが見やすくなる）
+        
+    except Exception as e:
+        # エラー時
+        with col2_main:
+            st.error(f"エラーが発生しました。テキストの形式を確認してください。\n\n詳細: {e}")
+            st.text_area("　コピーしてお使いください", value="", height=500, disabled=True)
+            
+
+
+# --- フッターをカスタマイズ ---
+st.markdown("---")
+st.markdown(
+    """
+    <div style="text-align: right; font-size: 12px; color: #C5D6B9;">
+        © 2025 kimika Inc. All rights reserved.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # ===============================================================
 # ▼▼▼ Streamlitの画面を作る部分 - （ver5.4：UI安定化と機能統合）▼▼▼
 # ===============================================================
