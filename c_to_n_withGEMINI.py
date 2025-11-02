@@ -196,8 +196,8 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
 # ===============================================================
 # ▼▼▼ Streamlitの画面を作る部分 - （ver4.4：UIと機能統合）▼▼▼
 # ===============================================================
-st.set_page_config(page_title="Caption to Narration", page_icon="📝", layout="wide")
-st.title('Caption to Narration')
+st.set_page_config(page_title="C to N with GEMINI ", page_icon="📝", layout="wide")
+st.title('Caption to Narration with gemini β')
 
 st.markdown("""<style> 
 textarea::placeholder { 
