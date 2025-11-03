@@ -702,8 +702,8 @@ if not ai_result_text or "エラー" in ai_result_text or "API" in ai_result_tex
 # --- ここまでデバッグ可視化 ----------------------------------------------
 
 
-                    st.session_state["ai_result_cache"] = ai_result_text or ""
-                    st.session_state["ai_cache_key"] = input_hash
+    st.session_state["ai_result_cache"] = ai_result_text or ""
+    st.session_state["ai_cache_key"] = input_hash
 
                 # キャッシュを元に注記行を付与（本文はそのまま）
                 findings = _parse_ai_markdown_table(st.session_state["ai_result_cache"])
