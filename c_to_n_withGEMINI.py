@@ -530,7 +530,7 @@ if input_text:
         conversion_result = convert_narration_script(input_text, n_force_insert, mm_ss_colon)
         converted_text = conversion_result["narration_script"]
         ai_data = conversion_result["ai_data"]
-
+        
         # output_text_area を col2_main の中で呼び出す
         with col2_main:
             # --- AI注記のON/OFFに応じて表示する文言を決定（原文は絶対に改変しない） ---
