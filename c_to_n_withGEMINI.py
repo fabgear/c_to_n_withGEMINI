@@ -455,7 +455,13 @@ if input_text:
             with st.spinner("Geminiが誤字脱字をチェック中..."):
                 ai_result_text = check_narration_with_gemini(ai_data, GEMINI_API_KEY)
                 st.markdown(ai_result_text)
-
+            annotated_preview = build_annotated_preview(converted_text, ai_result_text)
+            with col2_main:
+                st.text_area(
+                    "　指摘つきプレビュー（本文は変更しません／行下に※15字以内で指摘）",
+                    value=annotated_preview,
+                    height=500
+                )
     except Exception as e:
         with col2_main:
             st.error(f"エラーが発生しました。テキストの形式を確認してください。\n\n詳細: {e}")
