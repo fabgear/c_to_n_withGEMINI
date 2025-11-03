@@ -41,13 +41,11 @@ def check_narration_with_gemini(narration_blocks, api_key):
         ---
         """
 
-        # API呼び出し
-        response = client.models.generate_content(
-            model='gemini-2.5-flash', # 高速でコスト効率が良いモデル
-            contents=prompt,
-        )
-
-        return response.text
+        # ======= 変更①：互換性の高い呼び出し方に統一 =======
+        model = client.models.get("gemini-2.5-flash")  # 高速でコスト効率が良いモデル
+        response = model.generate_content(prompt)
+        # ======= 変更②：戻り値アクセスを安全化 =======
+        return getattr(response, "text", str(response))
 
     except APIError as e:
         return f"Gemini APIエラーが発生しました。詳細: {e}"
@@ -345,7 +343,11 @@ if input_text:
             
             with st.spinner("Geminiが誤字脱字をチェック中..."):
                 ai_result_text = check_narration_with_gemini(ai_data, GEMINI_API_KEY)
-                st.markdown(ai_result_text) # Markdownとして表示（テーブルが見やすくなる）
+                # ======= 変更③：エラーは赤、正常はMarkdownで表示 =======
+                if ai_result_text.startswith("エラー") or "Gemini APIエラー" in ai_result_text:
+                    st.error(ai_result_text)
+                else:
+                    st.markdown(ai_result_text)
         
         # UI調整
         with col2_main:
