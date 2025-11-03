@@ -1,11 +1,10 @@
 import streamlit as st
 import re
 import math
-# ▼▼▼【ver5.0 変更点】Gemini API関連のインポートを追加 (エラー回避ロジック付き) ▼▼▼
+# ▼▼▼【ver5.4 変更点】Gemini API関連のインポートを追加 (エラー回避ロジック付き) ▼▼▼
 try:
     from google import genai
     from google.genai.errors import APIError
-    # MockClientは不要
 except ImportError:
     class APIError(Exception): pass
     class MockClient:
@@ -14,9 +13,7 @@ except ImportError:
         def generate_content(self, *args, **kwargs): return lambda: type('Response', (object,), {'text': 'ライブラリ google-genai が未インストールです。'})()
     genai = MockClient()
     
-# ===============================================================
-# ▼▼▼ AIチェックの本体（Gemini API呼び出し部分）- ver5.0 ▼▼▼
-# ===============================================================
+# check_narration_with_gemini 関数はver5.3と同一
 def check_narration_with_gemini(narration_blocks, api_key):
     """Gemini APIを使用してナレーションの誤字脱字をチェックする"""
     if not api_key:
@@ -57,16 +54,15 @@ def check_narration_with_gemini(narration_blocks, api_key):
     except Exception as e:
         return f"予期せぬエラー: {e}"
 
-# ===============================================================
-# ▼▼▼ ツールの本体（エンジン部分）- （ver5.0：AIデータ取得統合）▼▼▼
-# ===============================================================
+
+# convert_narration_script 関数はver5.3と同一
 def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=False):
-    # （中略：時間ロジック、Hマーカーロジックは変更なし）
+    # （中略：ロジックはver4.4と同一）
     FRAME_RATE = 30.0
     CONNECTION_THRESHOLD = 1.0 + (10.0 / FRAME_RATE)
 
     to_zenkaku_num = str.maketrans('0123456789', '０１２３４５６７８９')
-
+    
     hankaku_symbols = '!@#$%&-+='
     zenkaku_symbols = '！＠＃＄％＆－＋＝'
     
@@ -254,17 +250,11 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
             
     return {"narration_script": "\n".join(output_lines), "ai_data": narration_blocks_for_ai} # 戻り値を変更
 
-
-
-
-
-
 # ===============================================================
-# ▼▼▼ Streamlitの画面を作る部分 - （ver4.4：UIと機能統合）▼▼▼
+# ▼▼▼ Streamlitの画面を作る部分 - （ver5.4：UI安定化と機能統合）▼▼▼
 # ===============================================================
 st.set_page_config(page_title="Caption to Narration", page_icon="📝", layout="wide")
 st.title('Caption to Narration')
-
 
 # Streamlit Cloud で Secrets から API キーを取得
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
@@ -278,23 +268,39 @@ textarea {
 }
 </style>""", unsafe_allow_html=True)
 
-col1, col2 = st.columns(2)
-
+# ----------------------------------------------------------------------------------
+# 0. help_textの定義
+# ----------------------------------------------------------------------------------
 help_text = """
 【機能詳細】  
 ・ENDタイム(秒のみ)が自動で入ります  
 　分をまたぐ時は(分秒)、次のナレーションと繋がる時は割愛されます  
+・頭の「N」は自動で全角に変換され未記載の時は自動挿入されます  
+　VOや実況などN以外はそのまま適応されます  
 ・Hをまたぐときは自動で仕切りが入ります  
-   
-・☑N強制挿入がONの場合、自動で全角Ｎが挿入されます  
-　※ＶＯや実況などはそのまま表記  
 ・ナレーション本文の半角英数字は全て全角に変換します  
-・☑ｍｍ：ｓｓで出力がONの場合タイムに：が入ります    
 """
 
-with col1:
-    st.header('')
-    
+# ----------------------------------------------------------------------------------
+# 1段目：メインのテキストエリアとタイトル
+# ----------------------------------------------------------------------------------
+col1_top, col2_top = st.columns(2)
+
+# タイトルはテキストエリアと同一カラムの最上部に配置 (ver2構造)
+with col1_top:
+    st.header('ナレーション原稿形式に変換します')
+with col2_top:
+    st.header('コピーしてお使いください')
+
+
+# テキストエリアの定義と結果の表示を同じブロックで行う
+col1_main, col2_main = st.columns(2)
+
+# st.text_areaの戻り値をここで定義
+input_text = ""
+
+with col1_main:
+    # input_textの定義
     input_text = st.text_area(
         "ここに元原稿をペースト", 
         height=500, 
@@ -317,7 +323,7 @@ N ああああ
 # 2段目：コントロールエリア（3カラム構造）
 # ----------------------------------------------------------------------------------
 # 3つのカラムを定義：[N強制挿入] [MM:SSで出力] [空]
-col_opt_space1, col1_bottom_opt, col2_bottom_opt, col3_bottom_opt = st.columns([0.1, 3, 4, 6]) 
+col1_bottom_opt, col2_bottom_opt, col3_bottom_opt = st.columns([3, 4, 6]) 
 
 # ▼▼▼【ver5.4 修正点】チェックボックスの横並びを3カラムで実現（構造をver5.2の形に戻す） ▼▼▼
 with col1_bottom_opt:
@@ -330,27 +336,6 @@ with col2_bottom_opt:
 with col3_bottom_opt:
     ai_check_flag = st.checkbox("誤字脱字をAIでチェック", value=False)
 # ▲▲▲【ver5.4 修正点】ここまで ▼▼▼
-
-
-with col2:
-    st.header('')
-    
-    if input_text:
-        try:
-            # ▼▼▼【ver4.4 修正点】変換関数にフラグを渡す ▼▼▼
-            converted_text = convert_narration_script(input_text, n_force_insert, mm_ss_colon)
-            
-            st.text_area("　変換完了！コピーしてお使いください", value=converted_text, height=500)
-            
-            # 左カラムのチェックボックス（2つ分）の高さに合わせる
-            st.markdown('<div style="height: 76px;"></div>', unsafe_allow_html=True) 
-
-        except Exception as e:
-            st.error(f"エラーが発生しました。テキストの形式を確認してください。\n\n詳細: {e}")
-            st.markdown('<div style="height: 538px;"></div>', unsafe_allow_html=True) 
-    else:
-        # 入力がない場合、右側を完全に空にするが、高さは維持
-        st.markdown('<div style="height: 538px;"></div>', unsafe_allow_html=True) 
 
 
 # ----------------------------------------------------------------------------------
@@ -388,8 +373,6 @@ if input_text:
             st.error(f"エラーが発生しました。テキストの形式を確認してください。\n\n詳細: {e}")
             st.text_area("　コピーしてお使いください", value="", height=500, disabled=True)
             
-
-
 # --- フッターをカスタマイズ ---
 st.markdown("---")
 st.markdown(
