@@ -332,21 +332,31 @@ N ああああ
 # 2段目：コントロールエリア（3カラム構造）
 # ----------------------------------------------------------------------------------
 
-# --- チェックボックス群（N強制挿入・ｍｍ：ｓｓ・誤字脱字チェックβ） ---
-# 💡 CSSでピクセル固定化（右端スペースを確保）
-
+# --- チェックボックス群（N強制挿入・ｍｍ：ｓｓ・誤字脱字チェックβ）をスコープ化 ---
 st.markdown("""
 <style>
-/* チェックボックス列の固定幅設定 */
-div[data-testid="stHorizontalBlock"] > div:nth-child(1) {flex: 0 0 130px !important;} /* N強制挿入 */
-div[data-testid="stHorizontalBlock"] > div:nth-child(2) {flex: 0 0 160px !important;} /* ｍｍ：ｓｓで出力 */
-div[data-testid="stHorizontalBlock"] > div:nth-child(3) {flex: 0 0 180px !important;} /* 誤字脱字チェックβ */
-div[data-testid="stHorizontalBlock"] > div:nth-child(4) {flex: 1 1 auto !important;}  /* スペース */
+/* チェックボックス行だけに限定（.opts-row 内だけに適用） */
+.opts-row div[data-testid="stHorizontalBlock"] > div:nth-child(1) {flex: 0 0 130px !important;} /* N強制挿入 */
+.opts-row div[data-testid="stHorizontalBlock"] > div:nth-child(2) {flex: 0 0 160px !important;} /* ｍｍ：ｓｓで出力 */
+.opts-row div[data-testid="stHorizontalBlock"] > div:nth-child(3) {flex: 0 0 180px !important;} /* 誤字脱字チェックβ */
+.opts-row div[data-testid="stHorizontalBlock"] > div:nth-child(4) {flex: 1 1 auto !important;}  /* 右スペース */
 </style>
 """, unsafe_allow_html=True)
 
-# --- カラム構成（チェックボックス3つ＋右スペース） ---
+# ここからチェックボックス行（.opts-row）をHTMLでラップしてスコープ化
+st.markdown('<div class="opts-row">', unsafe_allow_html=True)
+
 col1_bottom_opt, col2_bottom_opt, col3_bottom_opt, col4_bottom_spacer = st.columns(4)
+with col1_bottom_opt:
+    n_force_insert = st.checkbox("N強制挿入", value=True)
+with col2_bottom_opt:
+    mm_ss_colon = st.checkbox("ｍｍ：ｓｓで出力", value=False)
+with col3_bottom_opt:
+    ai_check_flag = st.checkbox("誤字脱字チェックβ", value=False)
+# col4_bottom_spacer は空のまま
+
+st.markdown('</div>', unsafe_allow_html=True)  # ← スコープ終了
+
 
 
 
@@ -355,14 +365,14 @@ col1_bottom_opt, col2_bottom_opt, col3_bottom_opt, col4_bottom_spacer = st.colum
 #col1_bottom_opt, col2_bottom_opt, col3_bottom_opt, col4_bottom_spacer = st.columns([1.5, 2, 2, 9])
 #col1_bottom_opt, col2_bottom_opt, col3_bottom_opt = st.columns([1.5, 2, 6]) 
 
-with col1_bottom_opt:
-    n_force_insert = st.checkbox("N強制挿入", value=True)
+#with col1_bottom_opt:
+ #   n_force_insert = st.checkbox("N強制挿入", value=True)
 
-with col2_bottom_opt:
-    mm_ss_colon = st.checkbox("ｍｍ：ｓｓで出力", value=False)
+#with col2_bottom_opt:
+ #   mm_ss_colon = st.checkbox("ｍｍ：ｓｓで出力", value=False)
 
-with col3_bottom_opt:
-    ai_check_flag = st.checkbox("誤字脱字チェックβ", value=False)
+#with col3_bottom_opt:
+ #   ai_check_flag = st.checkbox("誤字脱字チェックβ", value=False)
 
 
 # ----------------------------------------------------------------------------------
