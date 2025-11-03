@@ -679,6 +679,28 @@ if input_text:
                 if st.session_state["ai_cache_key"] != input_hash:
                     with st.spinner("Geminiが誤字脱字をチェック中..."):
                         ai_result_text = check_narration_with_gemini(ai_data, GEMINI_API_KEY)
+                        # --- ここからデバッグ可視化（表示のみ／ロジック不変更）-----------------
+# 1) APIキーの有効性（伏字）とレスポンスの基本情報
+def _mask_key(k: str) -> str:
+    if not k: return "(未設定)"
+    return f"(設定済) head:{k[:3]}***tail:{k[-3:]}"
+
+st.info(
+    "Gemini呼び出しデバッグ\n"
+    f"- APIキー: {_mask_key(GEMINI_API_KEY)}\n"
+    f"- 受信テキスト長: {0 if ai_result_text is None else len(ai_result_text)}",
+    icon="🔎"
+)
+
+# 2) 生レスポンスをそのまま確認（Markdown扱いだと崩れるので code 表示）
+with st.expander("デバッグ: Gemini 生レスポンス（そのまま）", expanded=False):
+    st.code(ai_result_text if ai_result_text else "<空>", language="markdown")
+
+# 3) 代表的な異常パターンを警告
+if not ai_result_text or "エラー" in ai_result_text or "API" in ai_result_text:
+    st.warning("AI応答が空 or エラー文を含んでいます。上の『生レスポンス』を確認してください。", icon="⚠️")
+# --- ここまでデバッグ可視化 ----------------------------------------------
+
                     st.session_state["ai_result_cache"] = ai_result_text or ""
                     st.session_state["ai_cache_key"] = input_hash
 
