@@ -330,7 +330,7 @@ N ああああ
 # ----------------------------------------------------------------------------------
 # 2段目：コントロールエリア（3カラム構造）
 # ----------------------------------------------------------------------------------
-col_OPT_space1, col1_bottom_opt, col2_bottom_opt, col3_bottom_optcol_opt_space2 = st.columns([0.1, 2, 2, 2]) 
+col1_bottom_opt, col2_bottom_opt, col3_bottom_optcol_opt_space2 = st.columns([0.1, 2, 2, 2]) 
 
 #col1_bottom_opt, col2_bottom_opt, col3_bottom_opt = st.columns([3, 4, 6]) 
 
