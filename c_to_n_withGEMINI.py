@@ -345,7 +345,7 @@ def _inject_ai_notes(narration_script: str, ai_markdown: str) -> str:
 # Streamlit UI
 # ===============================================================
 st.set_page_config(page_title="Caption to Narration", page_icon="📝", layout="wide")
-st.title('Caption to Narration')
+st.title('Caption to Narration with gemini')
 
 # APIキー
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
