@@ -539,7 +539,8 @@ if input_text:
                 if "ai_result_cache" not in st.session_state or not st.session_state["ai_result_cache"]:
                     with st.spinner("Geminiが誤字脱字をチェック中..."):
                         ai_result_text = check_narration_with_gemini(ai_data, GEMINI_API_KEY)
-                        st.session_state["ai_result_cache"] = ai_result_text　
+                        st.session_state["ai_result_cache"] = ai_result_text
+                        
                 # キャッシュ済みのAI出力を注記に整形して、原文の各該当行の直下に追記
                 _findings = _parse_ai_markdown_table(st.session_state.get("ai_result_cache", ""))
                 display_text = _annotate_narration_with_ai_notes(converted_text, _findings)
