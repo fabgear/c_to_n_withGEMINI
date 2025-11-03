@@ -351,23 +351,27 @@ if input_text:
                 st.markdown(ai_result_text) # Markdownとして表示（テーブルが見やすくなる）
         
         # UI調整
+
+        # --- ここから col2_main の中身 ---
         with col2_main:
-    if input_text:
-        # 変換後テキストを表示
-        try:
-            conversion_result = convert_narration_script(input_text, n_force_insert, mm_ss_colon)
-            converted_text = conversion_result["narration_script"]
-            ai_data = conversion_result["ai_data"]
-            st.text_area("　コピーしてお使いください", value=converted_text, height=500)
+            # 入力があるかどうかで分岐
+            if input_text:
+                try:
+                    conversion_result = convert_narration_script(input_text, n_force_insert, mm_ss_colon)
+                    converted_text = conversion_result["narration_script"]
+                    ai_data = conversion_result["ai_data"]
 
-            # AIチェック部分はこの下に続く（今の位置でOK）
+                    st.text_area("　コピーしてお使いください", value=converted_text, height=500)
 
-        except Exception as e:
-            st.error(f"エラーが発生しました。テキストの形式を確認してください。\n\n詳細: {e}")
-            st.text_area("　コピーしてお使いください", value="", height=500, disabled=True)
-    else:
-        # 入力がないときも高さを維持（ズレ防止）
-        st.markdown('<div style="height: 538px;"></div>', unsafe_allow_html=True)
+                    # （この下にAIチェック部分が続く）
+
+                except Exception as e:
+                    st.error(f"エラーが発生しました。テキストの形式を確認してください。\n\n詳細: {e}")
+                    st.text_area("　コピーしてお使いください", value="", height=500, disabled=True)
+            else:
+                # 入力がないときも高さを維持（ズレ防止）
+                st.markdown('<div style="height: 538px;"></div>', unsafe_allow_html=True)
+
        
 
 # --- フッターをカスタマイズ ---
