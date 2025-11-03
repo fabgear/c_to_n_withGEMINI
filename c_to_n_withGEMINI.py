@@ -659,7 +659,7 @@ with col3_bottom_opt:
 # [UI] 3段目：変換実行・結果表示・AI校正表示
 # -----------------------------
 if input_text:
-    try:
+    #try:
         conversion_result = convert_narration_script(input_text, n_force_insert, mm_ss_colon)
         converted_text = conversion_result["narration_script"]
         ai_data = conversion_result["ai_data"]
