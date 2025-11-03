@@ -335,14 +335,14 @@ N ああああ
 col1_bottom_opt, col2_bottom_opt, col3_bottom_opt, col4_bottom_spacer = st.columns([1.5, 2, 2, 9])
 #col1_bottom_opt, col2_bottom_opt, col3_bottom_opt = st.columns([1.5, 2, 6]) 
 
-#with col1_bottom_opt:
- #   n_force_insert = st.checkbox("N強制挿入", value=True)
+with col1_bottom_opt:
+    n_force_insert = st.checkbox("N強制挿入", value=True)
 
-#with col2_bottom_opt:
- #   mm_ss_colon = st.checkbox("ｍｍ：ｓｓで出力", value=False)
+with col2_bottom_opt:
+    mm_ss_colon = st.checkbox("ｍｍ：ｓｓで出力", value=False)
 
-#with col3_bottom_opt:
- #   ai_check_flag = st.checkbox("誤字脱字チェックβ", value=False)
+with col3_bottom_opt:
+    ai_check_flag = st.checkbox("誤字脱字チェックβ", value=False)
 
 
 # ----------------------------------------------------------------------------------
