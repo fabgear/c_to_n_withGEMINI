@@ -353,24 +353,33 @@ if input_text:
         # UI調整
 
         # --- ここから col2_main の中身 ---
-        with col2_main:
-            # 入力があるかどうかで分岐
+       with col2_main:
             if input_text:
                 try:
+                    # --- 変換実行 ---
                     conversion_result = convert_narration_script(input_text, n_force_insert, mm_ss_colon)
                     converted_text = conversion_result["narration_script"]
                     ai_data = conversion_result["ai_data"]
-
+        
+                    # --- 出力エリア ---
                     st.text_area("　コピーしてお使いください", value=converted_text, height=500)
-
-                    # （この下にAIチェック部分が続く）
-
+        
+                    # --- AIチェック ---
+                    if ai_check_flag:
+                        st.markdown("---")
+                        st.subheader("📝 AI校正チェック結果")
+                        with st.spinner("Geminiが誤字脱字をチェック中..."):
+                            ai_result_text = check_narration_with_gemini(ai_data, GEMINI_API_KEY)
+                            st.markdown(ai_result_text)
+        
                 except Exception as e:
                     st.error(f"エラーが発生しました。テキストの形式を確認してください。\n\n詳細: {e}")
                     st.text_area("　コピーしてお使いください", value="", height=500, disabled=True)
+        
             else:
-                # 入力がないときも高さを維持（ズレ防止）
+                # --- 入力が無い時のダミー高さ（ズレ防止） ---
                 st.markdown('<div style="height: 538px;"></div>', unsafe_allow_html=True)
+        
 
        
 
