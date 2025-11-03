@@ -67,40 +67,51 @@ def _parse_ai_markdown_table(md_text: str):
       | 原文の位置 | 本文 | 修正提案 | 理由 |
       |---|---|---|---|
       | ... | ... | ... | ... |
-    戻り値: [{'body': '本文', 'suggestion': '修正提案', 'reason': '理由'}...]
+    または自由記述:
+      例) 「出川哲郎」の正しくは「出川哲朗」
+          出川哲郎 → 出川哲朗  のような表記ゆれ
+    戻り値: [{'body': '本文(誤記側)', 'suggestion': '修正提案', 'reason': '理由'}...]
     """
     if not md_text or "問題ありませんでした" in md_text:
         return []
 
     rows = []
-    for line in md_text.splitlines():
-        line = line.strip()
+
+    # --- まずはMarkdown表を厳密にパース ---
+    lines = [ln.strip() for ln in md_text.splitlines()]
+    for line in lines:
         if not (line.startswith("|") and line.endswith("|")):
             continue
         # ヘッダ罫線はスキップ
-        if set(line.replace("|", "").replace(" ", "")) <= {"-", ":"}:
+        core = line.replace("|", "").strip()
+        if set(core.replace(" ", "")) <= {"-", ":"}:
             continue
 
-        # | で分割（先頭末尾の空を落とす）
         parts = [p.strip() for p in line.split("|")[1:-1]]
-        if len(parts) < 4:
-            continue
-        # 想定: [原文の位置, 本文, 修正提案, 理由]
-        body = parts[1]
-        suggestion = parts[2]
-        reason = parts[3]
-        if body or suggestion or reason:
-            rows.append({"body": body, "suggestion": suggestion, "reason": reason})
+        if len(parts) >= 4:
+            body = parts[1]
+            suggestion = parts[2]
+            reason = parts[3]
+            if body or suggestion or reason:
+                rows.append({"body": body, "suggestion": suggestion, "reason": reason})
 
-    # 表形式で取れなかった場合のフォールバック（かなり緩め）
+    # --- 表で1件も取れなければ自由記述をゆるく抽出 ---
     if not rows:
         import re
-        for m in re.finditer(r"(.+?)の?正しくは(.+?)", md_text):
+        text = md_text.replace("「", "").replace("」", "").replace("『", "").replace("』", "")
+        # パターン1: A の正しくは B
+        for m in re.finditer(r"(.+?)の?正しくは(.+?)(。|$|\n)", text):
+            body = m.group(1).strip()
+            suggestion = m.group(2).strip()
+            rows.append({"body": body, "suggestion": suggestion, "reason": ""})
+        # パターン2: A → B
+        for m in re.finditer(r"(.+?)\s*→\s*(.+?)(。|$|\n)", text):
             body = m.group(1).strip()
             suggestion = m.group(2).strip()
             rows.append({"body": body, "suggestion": suggestion, "reason": ""})
 
     return rows
+
 
 
 # === 変換済みテキストの各行の“該当箇所の直下”に※注記を追記（本文自体は不変） ===
@@ -110,45 +121,77 @@ def _annotate_narration_with_ai_notes(converted_text: str, findings: list, max_n
     findings: [{'body':..., 'suggestion':..., 'reason':...}]
     仕様:
       - 本文行に 'body' が含まれていれば、その直下に ※注記行を1回だけ挿入
-      - 注記は疑問形っぽく簡潔に。15文字制限（超過は省略記号）
-      - インデントは全角スペースで軽く下げる
+      - マッチは全角/半角・空白ゆれを正規化して行う
+      - 注記は 15 文字に丸める
     """
     if not findings:
         return converted_text
 
+    # --- 全角化・空白除去などの正規化（本文出力に合わせる） ---
+    def _to_zenkaku(s: str) -> str:
+        if not s:
+            return ""
+        # 英数と基本記号を全角化
+        hankaku = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 !@#$%&-+='
+        zenkaku = 'ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ０１２３４５６７８９　！＠＃＄％＆－＋＝'
+        tbl = str.maketrans(hankaku, zenkaku)
+        # 数字は念押しで全角化（上のテーブルにも含むが二重でも無害）
+        num_tbl = str.maketrans('0123456789', '０１２３４５６７８９')
+        return s.translate(tbl).translate(num_tbl)
+
+    def _norm_for_match(s: str) -> str:
+        s = _to_zenkaku(s)
+        # 空白・全角空白を除去して比較強化
+        s = s.replace(" ", "").replace("　", "")
+        return s
+
     lines = converted_text.split("\n")
     annotated = []
-    used = set()  # 同一 finding の多重挿入防止
-    INDENT = "　" * 9  # 全角インデント（見やすく控えめ）
+    used = set()
+    INDENT = "　" * 9  # 全角インデント
 
     for line in lines:
         annotated.append(line)
+
+        line_norm = _norm_for_match(line)
+
         for idx, f in enumerate(findings):
             if idx in used:
                 continue
+
             body = (f.get("body") or "").strip()
-            if not body:
+            sug  = (f.get("suggestion") or "").strip()
+            reason = (f.get("reason") or "").strip()
+
+            # body（誤記側）が空のこともあるので、suggestionも候補に
+            candidates = [c for c in [body, sug] if c]
+
+            matched = False
+            for c in candidates:
+                if _norm_for_match(c) and _norm_for_match(c) in line_norm:
+                    matched = True
+                    break
+
+            if not matched:
                 continue
-            if body in line:
-                # 注記本文を決定
-                sug = (f.get("suggestion") or "").strip()
-                reason = (f.get("reason") or "").strip()
-                if sug:
-                    core = f"正しくは{sug}では？"
-                elif reason:
-                    core = reason
-                else:
-                    core = "要確認"
 
-                # 15文字制限（日本語混在前提のざっくりスライス）
-                if len(core) > max_note_len:
-                    core = core[:max_note_len] + "…"
+            # 注記本文
+            if sug:
+                core = f"正しくは{sug}では？"
+            elif reason:
+                core = reason
+            else:
+                core = "要確認"
 
-                note = f"{INDENT}※{core}"
-                annotated.append(note)
-                used.add(idx)
+            if len(core) > max_note_len:
+                core = core[:max_note_len] + "…"
+
+            note = f"{INDENT}※{core}"
+            annotated.append(note)
+            used.add(idx)
 
     return "\n".join(annotated)
+
 
 # ===============================================================
 # ▼▼▼ AI結果の整形ユーティリティ（追記：原文改変なしで下行に注記を入れる） ▼▼▼
