@@ -705,14 +705,14 @@ if not ai_result_text or "エラー" in ai_result_text or "API" in ai_result_tex
     st.session_state["ai_result_cache"] = ai_result_text or ""
     st.session_state["ai_cache_key"] = input_hash
 
-                # キャッシュを元に注記行を付与（本文はそのまま）
-                findings = _parse_ai_markdown_table(st.session_state["ai_result_cache"])
-                display_text = _annotate_narration_with_ai_notes(converted_text, findings)
-            else:
-                # OFF のときは純粋な変換結果のみを表示（キャッシュは保持するが使わない）
-                display_text = converted_text
+  # キャッシュを元に注記行を付与（本文はそのまま）
+    findings = _parse_ai_markdown_table(st.session_state["ai_result_cache"])
+    display_text = _annotate_narration_with_ai_notes(converted_text, findings)
+else:
+    # OFF のときは純粋な変換結果のみを表示（キャッシュは保持するが使わない）
+    display_text = converted_text
 
-            st.text_area("　コピーしてお使いください", value=display_text, height=500)
+   st.text_area("　コピーしてお使いください", value=display_text, height=500)
 
                # )
     except Exception as e:
