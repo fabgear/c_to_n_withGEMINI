@@ -336,9 +336,9 @@ N ああああ
 st.markdown("""
 <style>
 /* チェックボックス行だけに限定（.opts-row 内だけに適用） */
-.opts-row div[data-testid="stHorizontalBlock"] > div:nth-child(1) {flex: 0 0 130px !important;} /* N強制挿入 */
-.opts-row div[data-testid="stHorizontalBlock"] > div:nth-child(2) {flex: 0 0 160px !important;} /* ｍｍ：ｓｓで出力 */
-.opts-row div[data-testid="stHorizontalBlock"] > div:nth-child(3) {flex: 0 0 180px !important;} /* 誤字脱字チェックβ */
+.opts-row div[data-testid="stHorizontalBlock"] > div:nth-child(1) {flex: 0 0 50px !important;} /* N強制挿入 */
+.opts-row div[data-testid="stHorizontalBlock"] > div:nth-child(2) {flex: 0 0 70px !important;} /* ｍｍ：ｓｓで出力 */
+.opts-row div[data-testid="stHorizontalBlock"] > div:nth-child(3) {flex: 0 0 70px !important;} /* 誤字脱字チェックβ */
 .opts-row div[data-testid="stHorizontalBlock"] > div:nth-child(4) {flex: 1 1 auto !important;}  /* 右スペース */
 </style>
 """, unsafe_allow_html=True)
