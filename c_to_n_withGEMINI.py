@@ -30,6 +30,8 @@ def check_narration_with_gemini(narration_blocks, api_key):
         prompt = f"""
         あなたはプロフェッショナルな校正者です。
         以下のナレーション原稿の誤字脱字をチェックし指摘して下さい。
+        意味は通じる所はスルーし**絶対に間違っている所だけ指摘**して下さい。
+        
         
          
         
@@ -296,7 +298,7 @@ def _inject_ai_notes(narration_script: str, ai_markdown: str) -> str:
     """
     AIのMarkdownテーブル | 原文の位置 | 本文 | 修正提案 | 理由 |
     をざっくりパースし、ナレーション本文の「該当行の直下」に
-    全角スペースで寄せた「※15文字以内の指摘？」を1行だけ挿入します。
+    全角スペースで寄せた「※25文字以内の指摘」を挿入します。
     """
     if not ai_markdown:
         return narration_script
