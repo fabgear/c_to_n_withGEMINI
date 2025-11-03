@@ -308,6 +308,10 @@ with col1_main:
 """, # placeholderも割愛
         help=help_text
     )
+# 入力が空のときでも右カラムの高さを先に確保しておく（ズレ防止）
+if not input_text:
+    with col2_main:
+        st.markdown('<div style="height: 538px;"></div>', unsafe_allow_html=True)
 
 # ----------------------------------------------------------------------------------
 # 2段目：コントロールエリア（3カラム構造）
@@ -358,9 +362,7 @@ if input_text:
         with col2_main:
             st.error(f"エラーが発生しました。テキストの形式を確認してください。\n\n詳細: {e}")
             st.text_area("　コピーしてお使いください", value="", height=500, disabled=True)
-        else:
-        # 入力がない場合、右側を完全に空にするが、高さは維持
-            st.markdown('<div style="height: 538px;"></div>', unsafe_allow_html=True)
+       
 
 # --- フッターをカスタマイズ ---
 st.markdown("---")
