@@ -288,9 +288,9 @@ col1_top, col2_top = st.columns(2)
 
 # タイトルはテキストエリアと同一カラムの最上部に配置 (ver2構造)
 with col1_top:
-    st.header('')
+    st.header('ナレーション原稿形式に変換します')
 with col2_top:
-    st.header('')
+    st.header('コピーしてお使いください')
 
 
 # テキストエリアの定義と結果の表示を同じブロックで行う
