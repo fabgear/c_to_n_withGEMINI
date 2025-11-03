@@ -209,36 +209,47 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
         else:
             formatted_start_time = colon_time_str.translate(to_zenkaku_num)
 
-        # 話者と本文
         speaker_symbol = 'Ｎ'
         text_content = block['text']
         body = ""
 
         if n_force_insert_flag:
-            match = re.match(r'^(\S+)\s+(.*)', text_content)
-            if match:
-                raw_speaker = match.group(1)
-                body = match.group(2).strip()
-                if raw_speaker.upper() == 'N':
-                    speaker_symbol = 'Ｎ'
-                else:
-                    speaker_symbol = raw_speaker.translate(to_zenkaku_all)
+            # ▼▼▼ N先頭のバリエーション対応（半角/全角/大小、スペース/全角スペース/コロン有無）▼▼▼
+            # 例: "Nああああ" / "Ｎ ああああ" / "n：ああああ" → 常に「Ｎ　ああああ」に統一
+            # ただし "Nakamura 太郎" のように英数字が直後に続くケースは誤検知しない
+            tc = text_content.strip()
+
+            # 1) 「N(系)の直後が英数字ではない」か、または「N(系)の後にコロン/スペースが入っている」場合をN話者として扱う
+            m_leading_n = re.match(r'^[\s　]*([NnＮｎ])(?:[\s　]*[：:])?(?![A-Za-z0-9])[\s　]*(.*)$', tc)
+            if m_leading_n:
+                # 先頭N系を話者記号に確定、後続を本文に
+                speaker_symbol = 'Ｎ'
+                body = m_leading_n.group(2).lstrip().lstrip('　')
             else:
-                if text_content.upper() == 'N' or text_content == 'Ｎ':
-                    body = ""
-                elif text_content.startswith('Ｎ '):
-                    body = text_content[2:].strip()
-                elif text_content.startswith('N '):
-                    body = text_content[2:].strip()
+                # 2) 既存仕様: 「話者(非空白) + 空白 + 本文」の形を優先
+                match = re.match(r'^(\S+)[\s　]+(.*)', text_content)
+                if match:
+                    raw_speaker = match.group(1)
+                    body = match.group(2).strip()
+                    if raw_speaker.upper() in ('N', 'Ｎ'):
+                        speaker_symbol = 'Ｎ'
+                    else:
+                        speaker_symbol = raw_speaker.translate(to_zenkaku_all)
                 else:
-                    body = text_content
+                    # 3) それ以外は全文を本文として扱う（単独N/Ｎは本文なし扱い）
+                    if tc.upper() in ('N', 'Ｎ'):
+                        body = ""
+                    else:
+                        body = tc
+
             if not body:
                 body = "※注意！本文なし！"
         else:
-            speaker_symbol = ''
-            body = text_content
+            speaker_symbol = ''  # 話者記号は空
+            body = text_content   # 元のテキスト全体を本文として扱う
             if not body.strip():
                 body = "※注意！本文なし！"
+
 
         body = body.translate(to_zenkaku_all)
 
