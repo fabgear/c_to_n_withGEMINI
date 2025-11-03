@@ -330,7 +330,7 @@ N ああああ
 # ----------------------------------------------------------------------------------
 # 2段目：コントロールエリア（3カラム構造）
 # ----------------------------------------------------------------------------------
-col1_bottom_opt, col2_bottom_opt, col3_bottom_opt = st.columns([2, 2, 6]) 
+col1_bottom_opt, col2_bottom_opt, col3_bottom_opt = st.columns([1.5, 2, 6]) 
 
 with col1_bottom_opt:
     n_force_insert = st.checkbox("N強制挿入", value=True)
