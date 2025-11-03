@@ -298,7 +298,7 @@ def _inject_ai_notes(narration_script: str, ai_markdown: str) -> str:
     """
     AIのMarkdownテーブル | 原文の位置 | 本文 | 修正提案 | 理由 |
     をざっくりパースし、ナレーション本文の「該当行の直下」に
-    全角スペースで寄せた「※25文字以内の指摘」を挿入します。
+    全角スペースで寄せた「※30文字以内の指摘&理由」を挿入します。
     """
     if not ai_markdown:
         return narration_script
@@ -320,7 +320,7 @@ def _inject_ai_notes(narration_script: str, ai_markdown: str) -> str:
         # 15文字以内の短い注意文（修正提案優先、なければ理由）
         core = suggestion or reason or ""
         core = core.replace("\n", " ").replace("\r", " ").strip()
-        core = core[:15]
+        core = core[:30]
         if not core:
             continue
 
