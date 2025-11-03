@@ -167,7 +167,7 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
         if should_insert_h_marker:
             output_lines.append("")
             output_lines.append(f"【{str(marker_hh_to_display).translate(to_zenkaku_num)}Ｈ】")
-            output_lines.append("")
+          #  output_lines.append("")
 
         previous_end_hh = end_hh
 
