@@ -330,7 +330,7 @@ N ああああ
 # ----------------------------------------------------------------------------------
 # 2段目：コントロールエリア（3カラム構造）
 # ----------------------------------------------------------------------------------
-col_opt_space1, col1_bottom_opt, col2_bottom_opt, col3_bottom_optcol_opt_space2 = st.columns([0.1, 4, 6, 6, 6]) 
+col_OPT_space1, col1_bottom_opt, col2_bottom_opt, col3_bottom_optcol_opt_space2 = st.columns([0.1, 2, 2, 2, 6]) 
 
 #col1_bottom_opt, col2_bottom_opt, col3_bottom_opt = st.columns([3, 4, 6]) 
 
@@ -340,10 +340,8 @@ with col1_bottom_opt:
 with col2_bottom_opt:
     mm_ss_colon = st.checkbox("ｍｍ：ｓｓで出力", value=False)
 
-# ▼▼▼【ver5.0 変更点】AIチェックボックスを追加 ▼▼▼
 with col3_bottom_opt:
     ai_check_flag = st.checkbox("誤字脱字をAIでチェック", value=False)
-# ▲▲▲【ver5.0 変更点】ここまで ▼▼▼
 
 
 # ----------------------------------------------------------------------------------
