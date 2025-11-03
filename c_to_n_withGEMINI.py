@@ -59,6 +59,93 @@ def check_narration_with_gemini(narration_blocks, api_key):
         return f"Gemini APIエラーが発生しました。詳細: {e}"
     except Exception as e:
         return f"予期せぬエラー: {e}"
+# -----------------------------
+# [AI] 指摘パース & プレビュー生成（本文は絶対に改変しない）
+# -----------------------------
+import csv
+import io
+import textwrap
+import re
+
+def _parse_ai_markdown_table(ai_md: str):
+    """
+    GeminiのMarkdown表（| 原文の位置 | 本文 | 修正提案 | 理由 |）をパースして
+    [{'pos':..., 'orig':..., 'proposal':..., 'reason':...}, ...] を返す。
+    表が無い/「問題ありませんでした。」の場合は空配列。
+    """
+    if not ai_md or "問題ありませんでした" in ai_md:
+        return []
+
+    # Markdown表部分だけ抽出
+    lines = [ln.strip() for ln in ai_md.strip().splitlines() if ln.strip()]
+    table_lines = [ln for ln in lines if ln.startswith("|") and ln.endswith("|")]
+    # 見出しと区切り（|---|）を除いた実データ行
+    data_lines = []
+    header_seen = False
+    for ln in table_lines:
+        if re.match(r"^\|\s*---", ln):
+            header_seen = True
+            continue
+        if header_seen:
+            data_lines.append(ln)
+
+    records = []
+    for row in data_lines:
+        # 先頭末尾の|を落としてセル分割
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        if len(cells) < 4:
+            continue
+        pos, orig, proposal, reason = cells[:4]
+        records.append({
+            "pos": pos,
+            "orig": orig,
+            "proposal": proposal,
+            "reason": reason,
+        })
+    return records
+
+def _shorten_note(text: str, limit: int = 15) -> str:
+    """全角/半角混在でも単純に文字数で詰める（要件：15文字以内）"""
+    if text is None:
+        return ""
+    t = text.strip()
+    return t if len(t) <= limit else t[:limit]
+
+def build_annotated_preview(narration_text: str, ai_md: str) -> str:
+    """
+    オリジナルのナレーション本文を一切変えず、
+    “各対象行の直下に”『※短い指摘（15文字以内）』行を足した「プレビュー」を生成。
+    マッチングは「本文セル（orig）」の部分一致で最初に見つかった行に付与。
+    """
+    findings = _parse_ai_markdown_table(ai_md)
+    if not findings:
+        # 指摘無し：そのまま返す
+        return narration_text
+
+    lines = narration_text.splitlines()
+    out = []
+    used = set()  # 同一行に多重付与し過ぎないための軽い制御
+
+    for idx, line in enumerate(lines):
+        out.append(line)
+        # その行に当てはまる指摘を拾う（複数あっても控えめに2件まで）
+        matched = []
+        for f in findings:
+            key = f["orig"]
+            if key and key in line:
+                matched.append(f)
+        if matched:
+            # 2件まで、提案優先・なければ理由
+            count = 0
+            for f in matched:
+                note_src = f["proposal"].strip() or f["reason"].strip()
+                note = _shorten_note(note_src, 15)
+                if note:
+                    out.append(f"※{note}")
+                    count += 1
+                    if count >= 2:
+                        break
+    return "\n".join(out)
 
 
 # -----------------------------
