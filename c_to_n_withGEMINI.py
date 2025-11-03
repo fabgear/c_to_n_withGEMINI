@@ -358,7 +358,7 @@ if input_text:
 else:
     # --- 入力が無い時のダミー高さ（ズレ防止） ---
     with col2_main:
-        st.markdown('<div style="height: 538px;"></div>', unsafe_allow_html=True)
+        st.markdown('<div style="height: 500px;"></div>', unsafe_allow_html=True)
 
 # --- フッターをカスタマイズ ---
 st.markdown("---")
