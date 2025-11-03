@@ -55,8 +55,7 @@ def check_narration_with_gemini(narration_blocks, api_key):
         """
 
         response = client.models.generate_content(
-            #model='gemini-2.5-flash',
-            model_name="gemini-2.0-flash-lite-preview",
+            model='gemini-2.5-flash',
             contents=prompt,
         )
         return getattr(response, "text", "") or ""
