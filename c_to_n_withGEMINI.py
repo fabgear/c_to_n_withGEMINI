@@ -331,7 +331,28 @@ N ああああ
 # ----------------------------------------------------------------------------------
 # 2段目：コントロールエリア（3カラム構造）
 # ----------------------------------------------------------------------------------
-col1_bottom_opt, col2_bottom_opt, col3_bottom_opt, col4_bottom_spacer = st.columns([1.5, 2, 2, 9])
+
+# --- チェックボックス群（N強制挿入・ｍｍ：ｓｓ・誤字脱字チェックβ） ---
+# 💡 CSSでピクセル固定化（右端スペースを確保）
+
+st.markdown("""
+<style>
+/* チェックボックス列の固定幅設定 */
+div[data-testid="stHorizontalBlock"] > div:nth-child(1) {flex: 0 0 130px !important;} /* N強制挿入 */
+div[data-testid="stHorizontalBlock"] > div:nth-child(2) {flex: 0 0 160px !important;} /* ｍｍ：ｓｓで出力 */
+div[data-testid="stHorizontalBlock"] > div:nth-child(3) {flex: 0 0 180px !important;} /* 誤字脱字チェックβ */
+div[data-testid="stHorizontalBlock"] > div:nth-child(4) {flex: 1 1 auto !important;}  /* スペース */
+</style>
+""", unsafe_allow_html=True)
+
+# --- カラム構成（チェックボックス3つ＋右スペース） ---
+col1_bottom_opt, col2_bottom_opt, col3_bottom_opt, col4_bottom_spacer = st.columns(4)
+
+
+
+
+
+#col1_bottom_opt, col2_bottom_opt, col3_bottom_opt, col4_bottom_spacer = st.columns([1.5, 2, 2, 9])
 #col1_bottom_opt, col2_bottom_opt, col3_bottom_opt = st.columns([1.5, 2, 6]) 
 
 with col1_bottom_opt:
