@@ -549,7 +549,6 @@ if input_text:
                 display_text = converted_text
 
             st.text_area("　コピーしてお使いください", value=display_text, height=500)
-
                 )
     except Exception as e:
         with col2_main:
