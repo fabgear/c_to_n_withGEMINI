@@ -622,23 +622,32 @@ if input_text:
         ai_data = conversion_result["ai_data"]
         
         # output_text_area を col2_main の中で呼び出す
+        # output_text_area を col2_main の中で呼び出す（原文は絶対に改変しない）
         with col2_main:
-            # --- AI注記のON/OFFに応じて表示する文言を決定（原文は絶対に改変しない） ---
+            # 入力テキストの内容でキャッシュキーを決定（内容が変わったときだけ再呼び出し）
+            input_hash = hashlib.md5(input_text.encode("utf-8")).hexdigest()
+            if "ai_cache_key" not in st.session_state:
+                st.session_state["ai_cache_key"] = None
+            if "ai_result_cache" not in st.session_state:
+                st.session_state["ai_result_cache"] = ""
+
             if ai_check_flag:
-                # 1回だけAPIを叩いてキャッシュ。2回目以降は再呼び出しなし
-                if "ai_result_cache" not in st.session_state or not st.session_state["ai_result_cache"]:
+                # 入力内容が変わっていればAPI再実行、同じならキャッシュ再利用
+                if st.session_state["ai_cache_key"] != input_hash:
                     with st.spinner("Geminiが誤字脱字をチェック中..."):
                         ai_result_text = check_narration_with_gemini(ai_data, GEMINI_API_KEY)
-                        st.session_state["ai_result_cache"] = ai_result_text
-                        
-                # キャッシュ済みのAI出力を注記に整形して、原文の各該当行の直下に追記
-                _findings = _parse_ai_markdown_table(st.session_state.get("ai_result_cache", ""))
-                display_text = _annotate_narration_with_ai_notes(converted_text, _findings)
+                    st.session_state["ai_result_cache"] = ai_result_text or ""
+                    st.session_state["ai_cache_key"] = input_hash
+
+                # キャッシュを元に注記行を付与（本文はそのまま）
+                findings = _parse_ai_markdown_table(st.session_state["ai_result_cache"])
+                display_text = _annotate_narration_with_ai_notes(converted_text, findings)
             else:
-                # OFFなら純粋な変換結果のみ（キャッシュは残すが使わない）
+                # OFF のときは純粋な変換結果のみを表示（キャッシュは保持するが使わない）
                 display_text = converted_text
 
             st.text_area("　コピーしてお使いください", value=display_text, height=500)
+
                # )
     except Exception as e:
         with col2_main:
