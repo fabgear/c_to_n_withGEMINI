@@ -1,149 +1,73 @@
+# ===========================================
+# Caption to Narration v1.00 + AI注釈実験
+# ===========================================
+
 import streamlit as st
 import re
 import math
-import hashlib
-from typing import List, Dict, Tuple
 
-# =========================
-# Gemini API（高速・軽量化）
-# =========================
+# ▼▼▼ Gemini API 関連 ▼▼▼
 from google import genai
 from google.genai.errors import APIError
 
-# ------------------------------------------------------------
-#  ユーティリティ：テキストのハッシュ（AI再実行の抑止用）
-# ------------------------------------------------------------
-def _digest_blocks(blocks: List[Dict[str, str]]) -> str:
-    # タイム＋本文の列挙からMD5を作成（本文が一文字でも変われば別ダイジェスト）
-    md5 = hashlib.md5()
-    for b in blocks:
-        md5.update((b.get("time", "") + "\n" + b.get("text", "") + "\n").encode("utf-8"))
-    return md5.hexdigest()
 
-def _ensure_question_15ch(note: str) -> str:
-    """先頭に※、末尾は疑問形（「？」）に統一。全体は15文字以内に丸める。"""
-    s = (note or "").strip().replace("\n", " ").replace("\r", " ")
-    if not s:
-        return ""
-    # 末尾を疑問形に寄せる
-    if not s.endswith("？"):
-        s = s.rstrip("。!?？") + "？"
-    # 先頭に ※
-    s = "※" + s
-    # 15文字以内に丸める
-    if len(s) > 15:
-        s = s[:15]
-        # 末尾が中途半端になったら整える（最後が句読点でないならそのままOK）
-        # ここではシンプルに切り捨てのみ
-    return s
-
-# ------------------------------------------------------------
-#  Gemini 呼び出し（行をチャンク分割して高速化・軽量プロンプト）
-#  - 半角/全角の差異は無視（今回の変換後は全角化済みなので誤検出抑制）
-#  - チャンク内で 0..N の行番号を振り、その番号と短い注意文だけ返させる
-#  - 出力仕様: 「index<TAB>note」のみを複数行（OK行は出力なし）
-# ------------------------------------------------------------
-def check_blocks_with_gemini_fast(
-    blocks: List[Dict[str, str]],
-    api_key: str,
-    model_name: str = "gemini-2.0-flash-lite-preview",
-    chunk_size: int = 6,
-) -> Dict[int, str]:
-    """
-    returns: {global_index: short_note_str}
-    """
+# ===============================================================
+# AIチェック（Gemini 呼び出し）
+# ===============================================================
+def check_narration_with_gemini(narration_blocks, api_key):
+    """Gemini APIを使用してナレーションの誤字脱字をチェックする"""
     if not api_key:
-        return {}
+        return "エラー：Gemini APIキーが設定されていません。Streamlit Secretsを確認してください。"
 
     try:
+        # クライアント初期化
         client = genai.Client(api_key=api_key)
-    except Exception:
-        return {}
 
-    # 念のため、lite が使えない場合は 2.5-flash にフォールバック
-    fallback_tried = False
-    notes_map: Dict[int, str] = {}
+        # タイムコードと本文を整形（AIに渡す元データ）
+        formatted_text = "\n".join([f"[{b['time']}] {b['text']}" for b in narration_blocks])
 
-    def _call_once(lines: List[Tuple[int, Dict[str, str]]]) -> Dict[int, str]:
-        # 軽量プロンプト
-        # ルール：
-        #  - 本文は絶対に変更しない
-        #  - 半角/全角の違いは無視（全角化による誤検知を避ける）
-        #  - 芸能人の名前の漢字間違いなど、テレビ上の不自然さのみ指摘
-        #  - 誤りがある行のみ、"index[TAB]15文字以内の短い疑問形" で返す
-        #  - OKな行は何も出力しない（空行も禁止）
-        prompt_header = (
-            "あなたはテレビ用ナレーションの校正者です。"
-            "本文は一切変更しません。半角/全角の違いは無視して比較します。"
-            "芸能人名など日本語の表記ミスやテレビで不自然な表現のみ簡潔に指摘してください。"
-            "誤りがある行だけ出力、形式は「index<TAB>短い注意文(15文字以内,疑問形)」。"
-            "OKな行は出力しない。余計な説明や囲みは禁止。"
+        # プロンプト（修正提案はテーブルで返してもらう）
+        prompt = f"""
+        あなたはプロフェッショナルな校正者です。
+        以下のナレーション原稿のリストを、テレビでおかしくないように誤字脱字、不適切な表現、文法ミスがないか厳密にチェックしてください。
+        
+        【指示】
+        1. 入力された本文（「本文」カラムの内容）は**一切変更しないで**ください。
+        2. 文章を勝手に補完しそれと比べて変だと判断しないように。渡した文章の誤字脱字をチェックしてください・
+        3. 芸能人の名前の漢字間違いも指摘してください
+        4. テレビは子どもも見るので難しすぎる漢字は避けたいです
+        5. 半角と全角の違い（数字・記号・英字）は誤りとして扱わないでください
+        6. テレビのナレーションなので超厳密なチェックではなく、これ絶対間違ってるよね？という所だけ指摘して下さい
+        7. 指摘は分かりやすく簡潔に。
+        8. タイムが重なっていたりした場合、本文検討中の場合があるので「※どのパターンが正解？」など注意を
+        
+        
+        
+        【出力形式】
+        | 原文の位置 | 本文 | 修正提案 | 理由 |
+        |---|---|---|---|
+        | (行番号または特定箇所) | (誤っている単語・フレーズ) | (正しい単語・フレーズ) | (修正理由) |
+        
+        【ナレーション原稿】
+        ---
+        {formatted_text}
+        ---
+        """
+
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
         )
+        return getattr(response, "text", "") or ""
 
-        # チャンク本文の用意（indexはチャンク内の0..Nで割当）
-        lines_desc = []
-        for local_i, (_, b) in enumerate(lines):
-            # ここで半角/全角は無視していいが、送るのはそのまま
-            # 入力は「[time] text」の簡素な形
-            lines_desc.append(f"{local_i}\t[{b.get('time','').strip()}] {b.get('text','').strip()}")
-        content = "以下の各行を個別に評価:\n" + "\n".join(lines_desc)
-
-        nonlocal fallback_tried
-        current_model = model_name
-        for _ in range(2):
-            try:
-                resp = client.models.generate_content(
-                    model=current_model,
-                    contents=f"{prompt_header}\n\n{content}",
-                )
-                raw = (resp.text or "").strip()
-                break
-            except Exception:
-                # 1回だけフォールバック
-                if not fallback_tried:
-                    current_model = "gemini-2.5-flash"
-                    fallback_tried = True
-                    continue
-                raw = ""
-                break
-
-        result_map: Dict[int, str] = {}
-        if not raw:
-            return result_map
-
-        # 期待出力：複数行 "index<TAB>notice"
-        for line in raw.splitlines():
-            s = line.strip()
-            if not s:
-                continue
-            if "\t" not in s:
-                # 仕様違反の行は無視（堅牢化）
-                continue
-            idx_str, note = s.split("\t", 1)
-            if not idx_str.isdigit():
-                continue
-            local_idx = int(idx_str)
-            if not (0 <= local_idx < len(lines)):
-                continue
-            # 15文字・疑問形に整形
-            note_final = _ensure_question_15ch(note)
-            if note_final:
-                global_idx = lines[local_idx][0]  # グローバル行index
-                result_map[global_idx] = note_final
-        return result_map
-
-    # チャンクで順次実行
-    for start in range(0, len(blocks), chunk_size):
-        chunk = blocks[start:start + chunk_size]
-        indexed_chunk = [(start + i, b) for i, b in enumerate(chunk)]
-        partial = _call_once(indexed_chunk)
-        notes_map.update(partial)
-
-    return notes_map
+    except APIError as e:
+        return f"Gemini APIエラーが発生しました。詳細: {e}"
+    except Exception as e:
+        return f"予期せぬエラー: {e}"
 
 
 # ===============================================================
-# ▼▼▼ 本体：変換エンジン（あなたの既存ロジックを保持） ▼▼▼
+# ナレーション変換エンジン（本文生成）
 # ===============================================================
 def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=False):
     FRAME_RATE = 30.0
@@ -163,6 +87,7 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
     start_index = -1
     time_pattern = r'(\d{2})[:;](\d{2})[:;](\d{2})[;.](\d{2})\s*-\s*(\d{2})[:;](\d{2})[:;](\d{2})[;.](\d{2})'
 
+    # タイムコード開始位置検出
     for i, line in enumerate(lines):
         line_with_frames = re.sub(r'(\d{2}:\d{2}:\d{2})(?![:.]\d{2})', r'\1.00', line)
         normalized_line = line_with_frames.strip().translate(to_hankaku_time).replace('~', '-')
@@ -171,10 +96,11 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
             break
 
     if start_index == -1:
-        return "エラー：変換可能なタイムコード（フレーム情報を含む形式）が見つかりませんでした。"
+        return {"narration_script": "エラー：変換可能なタイムコード（フレーム情報を含む形式）が見つかりませんでした。", "ai_data": []}
 
     relevant_lines = lines[start_index:]
 
+    # タイムコード行＋本文行をブロック化
     blocks = []
     i = 0
     while i < len(relevant_lines):
@@ -196,9 +122,10 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
 
     output_lines = []
 
-    # AIチェック用：元ブロックを保存（time/text）
+    # AIチェック用データ保持
     narration_blocks_for_ai = []
 
+    # ブロックを数値化
     parsed_blocks = []
     for block in blocks:
         line_with_frames = re.sub(r'(\d{2}:\d{2}:\d{2})(?![:.]\d{2})', r'\1.00', block['time'])
@@ -221,12 +148,13 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
             'text': block['text']
         })
 
+    # 本文生成
     previous_end_hh = None
-
     for i, block in enumerate(parsed_blocks):
         start_hh, start_mm, start_ss, start_fr = block['start_hh'], block['start_mm'], block['start_ss'], block['start_fr']
         end_hh, end_mm, end_ss, end_fr = block['end_hh'], block['end_mm'], block['end_ss'], block['end_fr']
 
+        # Hマーカー
         should_insert_h_marker = False
         marker_hh_to_display = -1
 
@@ -250,9 +178,9 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
 
         previous_end_hh = end_hh
 
+        # 表示タイムの整形（半フラグ、コロン有無）
         total_seconds_in_minute_loop = (start_mm % 60) * 60 + start_ss
         spacer = ""
-
         is_half_time = False
         base_time_str = ""
 
@@ -286,39 +214,51 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
         else:
             formatted_start_time = colon_time_str.translate(to_zenkaku_num)
 
-        # === N 話者の正規化（N/ｎ/Ｎ + 任意スペース を特別扱い）===
         speaker_symbol = 'Ｎ'
         text_content = block['text']
         body = ""
 
-        # N の後にスペースが無くてもOK、N/n/Ｎ いずれも話者記号扱い
-        n_head = re.match(r'^[NnＮ]\s*(.*)$', (text_content or ""))
-        if n_head:
-            # 先頭のN系は話者とみなし、残りを本文に
-            body = n_head.group(1).strip()
-        else:
-            if n_force_insert_flag:
-                # 既存ロジック（話者+本文の推定）
-                match = re.match(r'^(\S+)\s+(.*)', text_content or "")
+        if n_force_insert_flag:
+            # ▼▼▼ N先頭のバリエーション対応（半角/全角/大小、スペース/全角スペース/コロン有無）▼▼▼
+            # 例: "Nああああ" / "Ｎ ああああ" / "n：ああああ" → 常に「Ｎ　ああああ」に統一
+            # ただし "Nakamura 太郎" のように英数字が直後に続くケースは誤検知しない
+            tc = text_content.strip()
+
+            # 1) 「N(系)の直後が英数字ではない」か、または「N(系)の後にコロン/スペースが入っている」場合をN話者として扱う
+            m_leading_n = re.match(r'^[\s　]*([NnＮｎ])(?:[\s　]*[：:])?(?![A-Za-z0-9])[\s　]*(.*)$', tc)
+            if m_leading_n:
+                # 先頭N系を話者記号に確定、後続を本文に
+                speaker_symbol = 'Ｎ'
+                body = m_leading_n.group(2).lstrip().lstrip('　')
+            else:
+                # 2) 既存仕様: 「話者(非空白) + 空白 + 本文」の形を優先
+                match = re.match(r'^(\S+)[\s　]+(.*)', text_content)
                 if match:
                     raw_speaker = match.group(1)
-                    body = (match.group(2) or "").strip()
-                    if raw_speaker.upper() == 'N':
+                    body = match.group(2).strip()
+                    if raw_speaker.upper() in ('N', 'Ｎ'):
                         speaker_symbol = 'Ｎ'
                     else:
                         speaker_symbol = raw_speaker.translate(to_zenkaku_all)
                 else:
-                    # 話者記号なし → そのまま本文
-                    body = text_content or ""
-            else:
-                speaker_symbol = ''
-                body = text_content or ""
+                    # 3) それ以外は全文を本文として扱う（単独N/Ｎは本文なし扱い）
+                    if tc.upper() in ('N', 'Ｎ'):
+                        body = ""
+                    else:
+                        body = tc
 
-        if not body:
-            body = "※注意！本文なし！"
+            if not body:
+                body = "※注意！本文なし！"
+        else:
+            speaker_symbol = ''  # 話者記号は空
+            body = text_content   # 元のテキスト全体を本文として扱う
+            if not body.strip():
+                body = "※注意！本文なし！"
+
 
         body = body.translate(to_zenkaku_all)
 
+        # ENDタイム（秒 or 分秒）
         end_string = ""
         add_blank_line = True
 
@@ -347,7 +287,7 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
 
             end_string = f" (～{formatted_end_time})"
 
-        if n_force_insert_flag and speaker_symbol:
+        if n_force_insert_flag:
             output_lines.append(f"{formatted_start_time}{spacer}{speaker_symbol}　{body}{end_string}")
         else:
             output_lines.append(f"{formatted_start_time}{spacer}{body}{end_string}")
@@ -355,22 +295,82 @@ def convert_narration_script(text, n_force_insert_flag=True, mm_ss_colon_flag=Fa
         if add_blank_line and i < len(parsed_blocks) - 1:
             output_lines.append("")
 
-    # 変換結果とAI用元データを返す
     return {"narration_script": "\n".join(output_lines), "ai_data": narration_blocks_for_ai}
 
 
 # ===============================================================
-# ▼▼▼ 画面（UI）：既存構成を維持 ▼▼▼
+# AI指摘を本文直下に挿入するヘルパー
+# ===============================================================
+def _inject_ai_notes(narration_script: str, ai_markdown: str) -> str:
+    """
+    AIのMarkdownテーブル | 原文の位置 | 本文 | 修正提案 | 理由 |
+    をざっくりパースし、ナレーション本文の「該当行の直下」に
+    全角スペースで寄せた「※15文字以内の指摘？」を1行だけ挿入します。
+    """
+    if not ai_markdown:
+        return narration_script
+
+    candidates = []
+    for ln in ai_markdown.splitlines():
+        s = ln.strip()
+        if not s.startswith("|"):
+            continue
+        # 罫線（|---|）ぽい行は除外
+        if set(s.replace("|", "").replace("-", "").strip()) == set():
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if len(cells) < 4:
+            continue
+        # 想定: | 原文の位置 | 本文 | 修正提案 | 理由 |
+        pos, body, suggestion, reason = cells[:4]
+
+        # 15文字以内の短い注意文（修正提案優先、なければ理由）
+        core = suggestion or reason or ""
+        core = core.replace("\n", " ").replace("\r", " ").strip()
+        core = core[:15]
+        if not core:
+            continue
+
+        note = f"※{core}？"
+        candidates.append((body, note))
+
+    if not candidates:
+        return narration_script
+
+    out_lines = []
+    for line in narration_script.splitlines():
+        out_lines.append(line)
+        # 本文行に本文セル文字列が含まれていたら、その直下に全角スペースでノートを入れる
+        for body, note in candidates:
+            if body and body in line and not line.strip().startswith("※"):
+                out_lines.append("　　　　　　　　　" + note)  # 全角スペースで寄せる
+                break  # 1件だけ
+    return "\n".join(out_lines)
+
+
+# ===============================================================
+# Streamlit UI
 # ===============================================================
 st.set_page_config(page_title="Caption to Narration", page_icon="📝", layout="wide")
 st.title('Caption to Narration')
 
+# APIキー
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
-st.markdown("""<style> 
-textarea::placeholder { font-size: 13px; } 
-textarea { font-size: 14px !important; }
-</style>""", unsafe_allow_html=True)
+# セッション状態（AI結果と入力ハッシュ）を初期化
+if "ai_result_cache" not in st.session_state:
+    st.session_state["ai_result_cache"] = ""
+if "last_input_hash" not in st.session_state:
+    st.session_state["last_input_hash"] = None
+
+# CSS
+st.markdown(
+    """<style>
+    textarea::placeholder { font-size: 13px; }
+    textarea { font-size: 14px !important; }
+    </style>""",
+    unsafe_allow_html=True
+)
 
 col1, col2 = st.columns(2)
 
@@ -389,20 +389,21 @@ help_text = """
 　　※精度低いのでテスト機能です
 """
 
-# --- 1段目 ---
+# --- 1段目：タイトル行（空見出しで余白を維持） ---
 col1_top, col2_top = st.columns(2)
 with col1_top:
     st.header('')
 with col2_top:
     st.header('')
 
+# --- 1段目：メインのテキストエリア ---
 col1_main, col2_main = st.columns(2)
 input_text = ""
 
 with col1_main:
     input_text = st.text_area(
-        "　ここに元原稿をペースト", 
-        height=500, 
+        "　ここに元原稿をペースト",
+        height=500,
         placeholder="""①キャプションをテキストで書き出した形式
 00;00;00;00 - 00;00;02;29
 N ああああ
@@ -414,11 +415,17 @@ N ああああ
 この２つの形式に対応しています。ペーストして　Ctrl+Enter　を押して下さい
 ①の方が細かい変換をするのでオススメです
 
-""", 
+""",
         help=help_text
     )
 
-# --- 2段目（左寄せ＋右スペース） ---
+# 入力が変わったらAIキャッシュをクリア
+cur_hash = hash(input_text.strip())
+if st.session_state["last_input_hash"] != cur_hash:
+    st.session_state["ai_result_cache"] = ""
+    st.session_state["last_input_hash"] = cur_hash
+
+# --- 2段目：チェックボックス群（左寄せ + 右スペーサ） ---
 col1_bottom_opt, col2_bottom_opt, col3_bottom_opt, col4_bottom_spacer = st.columns([1.5, 2, 2, 9])
 
 with col1_bottom_opt:
@@ -430,67 +437,31 @@ with col2_bottom_opt:
 with col3_bottom_opt:
     ai_check_flag = st.checkbox("誤字脱字チェックβ", value=False)
 
-# 差分キャッシュ（セッション）初期化
-if "ai_result_cache" not in st.session_state:
-    st.session_state["ai_result_cache"] = {}      # {global_idx: note}
-if "ai_input_digest" not in st.session_state:
-    st.session_state["ai_input_digest"] = ""      # last digest string
 
-# --- 3段目：変換＆表示 ---
+# --- 3段目：変換実行 & 表示 ---
 if input_text:
     try:
+        # 本文変換（narration + AI用の元データ）
         conversion_result = convert_narration_script(input_text, n_force_insert, mm_ss_colon)
         converted_text = conversion_result["narration_script"]
-        ai_data = conversion_result["ai_data"]  # [{'time':..., 'text':...}, ...]
+        ai_data = conversion_result["ai_data"]
 
-        # ===== AIチェック：オンの時だけ & 入力が変わっていた時だけAPI実行 =====
-        final_text_for_display = converted_text  # まずはそのまま
-        if ai_check_flag and GEMINI_API_KEY:
-            digest_now = _digest_blocks(ai_data)
+        displayed_text = converted_text
 
-            # 入力が変わったらAI再実行
-            need_requery = (digest_now != st.session_state["ai_input_digest"])
-            if need_requery:
-                ai_notes = check_blocks_with_gemini_fast(
-                    ai_data,
-                    api_key=GEMINI_API_KEY,
-                    model_name="gemini-2.0-flash-lite-preview",  # 最速候補（不可なら内部で2.5-flashへフォールバック）
-                    chunk_size=6
-                )
-                # キャッシュ保存
-                st.session_state["ai_result_cache"] = ai_notes or {}
-                st.session_state["ai_input_digest"] = digest_now
+        # AI指摘（本文は改変せず、同じテキストエリアの直下行に※で追記）
+        if ai_check_flag:
+            with st.spinner("Geminiが誤字脱字をチェック中..."):
+                ai_result_text = st.session_state.get("ai_result_cache", "")
+                if not ai_result_text:
+                    ai_result_text = check_narration_with_gemini(ai_data, GEMINI_API_KEY)
+                    st.session_state["ai_result_cache"] = ai_result_text or ""
 
-            # ここからはキャッシュを使って右側表示に「※短い注意」を差し込み
-            # 変換結果を「行」ごとに対応づける：出力行と元ブロックのマッピングを作る
-            # ルール：convert_narration_script は1ブロックにつき1行（＋場合により空行・H見出し行）
-            # ここではシンプルに「非空＆'Ｈ】'でない本文行」をブロック順に数え上げ、ai_notesのindexに合わせて差し込む
-            lines_out = converted_text.split("\n")
-            block_line_indices = []  # 出力の中で本文行のインデックス一覧
-            for idx, ln in enumerate(lines_out):
-                s = ln.strip()
-                if not s:
-                    continue
-                if s.startswith("【") and s.endswith("Ｈ】"):
-                    # H見出しはスキップ
-                    continue
-                # それ以外の非空行を「本文行」とみなす
-                block_line_indices.append(idx)
+            if st.session_state["ai_result_cache"]:
+                displayed_text = _inject_ai_notes(converted_text, st.session_state["ai_result_cache"])
 
-            # ai_result_cache: {global_block_idx: "※..."} を対象行の直下に差し込み
-            # 直下挿入のため、後ろから処理するとインデックスがズレにくい
-            ai_notes_cached = st.session_state.get("ai_result_cache", {})
-            for g_idx in sorted(ai_notes_cached.keys(), reverse=True):
-                if 0 <= g_idx < len(block_line_indices):
-                    insert_at = block_line_indices[g_idx] + 1
-                    note_line = "　　　　　　　　　" + ai_notes_cached[g_idx]  # 行頭に全角空白でインデント
-                    lines_out.insert(insert_at, note_line)
-
-            final_text_for_display = "\n".join(lines_out)
-
-        # 右ペインに表示
+        # 右側に表示
         with col2_main:
-            st.text_area("　コピーしてお使いください", value=final_text_for_display, height=500)
+            st.text_area("　コピーしてお使いください", value=displayed_text, height=500)
 
     except Exception as e:
         with col2_main:
@@ -498,7 +469,7 @@ if input_text:
             st.text_area("　コピーしてお使いください", value="", height=500, disabled=True)
 
 else:
-    # 入力なし時の高さダミー
+    # 入力が無い時は右側の高さをダミーで確保してズレ防止
     with col2_main:
         st.markdown('<div style="height: 500px;"></div>', unsafe_allow_html=True)
 
