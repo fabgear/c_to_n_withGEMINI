@@ -308,10 +308,7 @@ with col1_main:
 """, # placeholderも割愛
         help=help_text
     )
-# 入力が空のときでも右カラムの高さを先に確保しておく（ズレ防止）
-if not input_text:
-    with col2_main:
-        st.markdown('<div style="height: 538px;"></div>', unsafe_allow_html=True)
+
 
 # ----------------------------------------------------------------------------------
 # 2段目：コントロールエリア（3カラム構造）
@@ -355,13 +352,22 @@ if input_text:
         
         # UI調整
         with col2_main:
-            st.markdown('<div style="height: 38px;"></div>', unsafe_allow_html=True) # チェックボックス2つ分の高さを確保 (簡略化)
-            
-    except Exception as e:
-        # エラー時
-        with col2_main:
+    if input_text:
+        # 変換後テキストを表示
+        try:
+            conversion_result = convert_narration_script(input_text, n_force_insert, mm_ss_colon)
+            converted_text = conversion_result["narration_script"]
+            ai_data = conversion_result["ai_data"]
+            st.text_area("　コピーしてお使いください", value=converted_text, height=500)
+
+            # AIチェック部分はこの下に続く（今の位置でOK）
+
+        except Exception as e:
             st.error(f"エラーが発生しました。テキストの形式を確認してください。\n\n詳細: {e}")
             st.text_area("　コピーしてお使いください", value="", height=500, disabled=True)
+    else:
+        # 入力がないときも高さを維持（ズレ防止）
+        st.markdown('<div style="height: 538px;"></div>', unsafe_allow_html=True)
        
 
 # --- フッターをカスタマイズ ---
