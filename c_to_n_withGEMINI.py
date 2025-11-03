@@ -9,6 +9,7 @@
 import streamlit as st
 import re
 import math
+import hashlib  # ← 追加
 from google import genai
 from google.genai.errors import APIError
 
@@ -59,6 +60,95 @@ def check_narration_with_gemini(narration_blocks, api_key):
         return f"Gemini APIエラーが発生しました。詳細: {e}"
     except Exception as e:
         return f"予期せぬエラー: {e}"
+# === AI結果のMarkdown表を安全にパース（本文・修正提案・理由） ===
+def _parse_ai_markdown_table(md_text: str):
+    """
+    期待形式:
+      | 原文の位置 | 本文 | 修正提案 | 理由 |
+      |---|---|---|---|
+      | ... | ... | ... | ... |
+    戻り値: [{'body': '本文', 'suggestion': '修正提案', 'reason': '理由'}...]
+    """
+    if not md_text or "問題ありませんでした" in md_text:
+        return []
+
+    rows = []
+    for line in md_text.splitlines():
+        line = line.strip()
+        if not (line.startswith("|") and line.endswith("|")):
+            continue
+        # ヘッダ罫線はスキップ
+        if set(line.replace("|", "").replace(" ", "")) <= {"-", ":"}:
+            continue
+
+        # | で分割（先頭末尾の空を落とす）
+        parts = [p.strip() for p in line.split("|")[1:-1]]
+        if len(parts) < 4:
+            continue
+        # 想定: [原文の位置, 本文, 修正提案, 理由]
+        body = parts[1]
+        suggestion = parts[2]
+        reason = parts[3]
+        if body or suggestion or reason:
+            rows.append({"body": body, "suggestion": suggestion, "reason": reason})
+
+    # 表形式で取れなかった場合のフォールバック（かなり緩め）
+    if not rows:
+        import re
+        for m in re.finditer(r"(.+?)の?正しくは(.+?)", md_text):
+            body = m.group(1).strip()
+            suggestion = m.group(2).strip()
+            rows.append({"body": body, "suggestion": suggestion, "reason": ""})
+
+    return rows
+
+
+# === 変換済みテキストの各行の“該当箇所の直下”に※注記を追記（本文自体は不変） ===
+def _annotate_narration_with_ai_notes(converted_text: str, findings: list, max_note_len: int = 15) -> str:
+    """
+    converted_text: 既存のナレーション出力（本文は改変しない）
+    findings: [{'body':..., 'suggestion':..., 'reason':...}]
+    仕様:
+      - 本文行に 'body' が含まれていれば、その直下に ※注記行を1回だけ挿入
+      - 注記は疑問形っぽく簡潔に。15文字制限（超過は省略記号）
+      - インデントは全角スペースで軽く下げる
+    """
+    if not findings:
+        return converted_text
+
+    lines = converted_text.split("\n")
+    annotated = []
+    used = set()  # 同一 finding の多重挿入防止
+    INDENT = "　" * 9  # 全角インデント（見やすく控えめ）
+
+    for line in lines:
+        annotated.append(line)
+        for idx, f in enumerate(findings):
+            if idx in used:
+                continue
+            body = (f.get("body") or "").strip()
+            if not body:
+                continue
+            if body in line:
+                # 注記本文を決定
+                sug = (f.get("suggestion") or "").strip()
+                reason = (f.get("reason") or "").strip()
+                if sug:
+                    core = f"正しくは{sug}では？"
+                elif reason:
+                    core = reason
+                else:
+                    core = "要確認"
+
+                # 15文字制限（日本語混在前提のざっくりスライス）
+                if len(core) > max_note_len:
+                    core = core[:max_note_len] + "…"
+
+                note = f"{INDENT}※{core}"
+                annotated.append(note)
+                used.add(idx)
+
+    return "\n".join(annotated)
 
 # ===============================================================
 # ▼▼▼ AI結果の整形ユーティリティ（追記：原文改変なしで下行に注記を入れる） ▼▼▼
