@@ -59,6 +59,91 @@ def check_narration_with_gemini(narration_blocks, api_key):
         return f"Gemini APIエラーが発生しました。詳細: {e}"
     except Exception as e:
         return f"予期せぬエラー: {e}"
+
+# ===============================================================
+# ▼▼▼ AI結果の整形ユーティリティ（追記：原文改変なしで下行に注記を入れる） ▼▼▼
+# ===============================================================
+def _parse_ai_markdown_table(md_text: str):
+    """
+    Geminiの出力（Markdown表 or '問題ありませんでした。'）を解析して
+    [{'pos': '...', 'orig': '...', 'suggest': '...', 'reason': '...'}, ...] を返す
+    """
+    findings = []
+    if not md_text or "問題ありませんでした" in md_text:
+        return findings
+
+    lines = [ln.strip() for ln in md_text.splitlines()]
+    rows = []
+    for ln in lines:
+        if ln.startswith("|") and ln.endswith("|"):
+            cells = [c.strip() for c in ln.strip("|").split("|")]
+            rows.append(cells)
+
+    # ヘッダ行・区切り行を除いた実データ行のみ抽出
+    data_rows = []
+    for cells in rows:
+        if len(cells) < 4:
+            continue
+        # 区切り行（---）を除外
+        if all(set(c) <= {"-", ":"} for c in cells):
+            continue
+        data_rows.append(cells)
+
+    # 先頭がヘッダなら落とす
+    if data_rows and ("原文の位置" in data_rows[0][0] or "本文" in data_rows[0][1]):
+        data_rows = data_rows[1:]
+
+    for cells in data_rows:
+        try:
+            pos, orig, suggest, reason = cells[0], cells[1], cells[2], cells[3]
+        except Exception:
+            continue
+        findings.append({
+            "pos": pos,
+            "orig": orig,
+            "suggest": suggest,
+            "reason": reason
+        })
+    return findings
+
+
+def _annotate_narration_with_ai_notes(narration_text: str, findings):
+    """
+    右側テキストエリアに表示するため、
+    原文行はそのまま・該当行の直下に 「※正しくは〇〇では？」 を追記する。
+    - 原文の『本文』をその行に含むかどうかでマッチング（曖昧一致）。
+    - 同一行に複数指摘があれば、指摘行を複数挿入。
+    - 追記は表示上の加工のみ。元変換ロジックの出力は改変しない。
+    """
+    if not findings:
+        return narration_text
+
+    lines = narration_text.splitlines()
+    new_lines = []
+    for line in lines:
+        new_lines.append(line)
+
+        # 本文候補（行全体から探す簡易一致）
+        # NやVO等の記号まで厳密に分解せず、まずは「本文」文字列が含まれるかで判定
+        matches_for_this_line = []
+        for f in findings:
+            orig = (f.get("orig") or "").strip()
+            suggest = (f.get("suggest") or "").strip()
+            if not orig or not suggest:
+                continue
+            if orig in line:
+                matches_for_this_line.append(f)
+
+        # マッチがあれば、行の直下に注記を追記
+        for f in matches_for_this_line:
+            suggest = f["suggest"]
+            # できるだけ短く・疑問形で
+            note = f"　　　　　　　　　※正しくは{suggest}では？"
+            new_lines.append(note)
+
+    return "\n".join(new_lines)
+
+
 # -----------------------------
 # [AI] 指摘パース & プレビュー生成（本文は絶対に改変しない）
 # -----------------------------
@@ -446,21 +531,25 @@ if input_text:
         converted_text = conversion_result["narration_script"]
         ai_data = conversion_result["ai_data"]
 
+        # output_text_area を col2_main の中で呼び出す
         with col2_main:
-            st.text_area("　コピーしてお使いください", value=converted_text, height=500)
+            # --- AI注記のON/OFFに応じて表示する文言を決定（原文は絶対に改変しない） ---
+            if ai_check_flag:
+                # 1回だけAPIを叩いてキャッシュ。2回目以降は再呼び出しなし
+                if "ai_result_cache" not in st.session_state or not st.session_state["ai_result_cache"]:
+                    with st.spinner("Geminiが誤字脱字をチェック中..."):
+                        ai_result_text = check_narration_with_gemini(ai_data, GEMINI_API_KEY)
+                        st.session_state["ai_result_cache"] = ai_result_text
 
-        if ai_check_flag:
-            st.markdown("---")
-            st.subheader("📝 AI校正チェック結果")
-            with st.spinner("Geminiが誤字脱字をチェック中..."):
-                ai_result_text = check_narration_with_gemini(ai_data, GEMINI_API_KEY)
-                st.markdown(ai_result_text)
-            annotated_preview = build_annotated_preview(converted_text, ai_result_text)
-            with col2_main:
-                st.text_area(
-                    "　指摘つきプレビュー（本文は変更しません／行下に※15字以内で指摘）",
-                    value=annotated_preview,
-                    height=500
+                # キャッシュ済みのAI出力を注記に整形して、原文の各該当行の直下に追記
+                _findings = _parse_ai_markdown_table(st.session_state.get("ai_result_cache", ""))
+                display_text = _annotate_narration_with_ai_notes(converted_text, _findings)
+            else:
+                # OFFなら純粋な変換結果のみ（キャッシュは残すが使わない）
+                display_text = converted_text
+
+            st.text_area("　コピーしてお使いください", value=display_text, height=500)
+
                 )
     except Exception as e:
         with col2_main:
